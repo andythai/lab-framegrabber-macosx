@@ -28,6 +28,8 @@ vector<Interval> intervals;		// Container for intervals
 VideoCapture video;				// Loads the video
 string video_filename;			// Video's name
 bool frame_active = true;		// True if frame grabbing for active rat, false if recording for passive rat
+ofstream log_file;
+double filter_time = -1;
 
 // Forward declarations
 static void load_video();
@@ -47,7 +49,7 @@ int main(int argc, const char * argv[]) {
     struct stat st;
     if (stat("input/",&st) == 0) {
         if ((st.st_mode) & (S_IFDIR != 0)) {
-            std::cout << "Contains input directory!" << std::endl;
+            //std::cout << "Contains input directory!" << std::endl;
         }
     }
     else {
@@ -61,7 +63,7 @@ int main(int argc, const char * argv[]) {
     
     if (stat("output/",&st) == 0) {
         if ((st.st_mode) & (S_IFDIR != 0)) {
-            std::cout << "Contains output directory!" << std::endl;
+            //std::cout << "Contains output directory!" << std::endl;
         }
     }
     else {
@@ -71,7 +73,7 @@ int main(int argc, const char * argv[]) {
     }
     
     // Check if input and output directories exist
-    /**
+    /** WINDOWS
     if (!fs::exists("input")) { // Check if input folder exists
         cout << "\nNo input folder detected! Creating input folder." << endl <<
         "FrameGrabber will shut down. Please move your input files to the input folder." << endl;
@@ -133,6 +135,7 @@ int main(int argc, const char * argv[]) {
     grab_frames();
     
     // Exit behavior
+    log_file.close();
     cout << endl << video_filename << " frame grabbing concluded!" << endl;
     cout << "Press ENTER to exit program." << endl;
     cin.ignore();
@@ -308,6 +311,7 @@ static void filter() {
         }
     }
     threshold = stod(threshold_string);
+    filter_time = threshold;
     
     // Prune intervals
     int num_pruned = 0;
@@ -360,20 +364,64 @@ static void grab_frames() {
     struct stat st;
     if (stat(video_name_directory.c_str(),&st) == 0) {
         if ((st.st_mode) & (S_IFDIR != 0)) {
-            std::cout << "NOTE: This video already has an existing directory!" << std::endl;
+            std::cout << "NOTE: This video already has an existing directory!" << std::endl <<
+            "It may already be done!" << std::endl << "Continue? (y/n) ";
+            bool valid = false;
+            while (valid == false) {
+                string response;
+                getline(cin, response);
+                if (response == "y") {
+                    valid = true;
+                }
+                else if (response == "n") {
+                    return;
+                }
+            }
+            std::cout << std::endl;
         }
     }
     else {
         std::cout << "Creating directory " << video_name_directory << std::endl;
         mkdir(video_name_directory.c_str(),0777);
+        mkdir((video_name_directory + "rejected/").c_str(),0777);
     }
+    
+    // Open logs
+    string suffix;
+    if (frame_active) {
+        suffix = "A";
+    }
+    else {
+        suffix = "P";
+    }
+    log_file.open(video_name + suffix + ".log", ios::out | ios::binary | ios::trunc);
+    log_file << video_cut + video_date << "| ";
+    if (frame_active) {
+        log_file << "Active | ";
+    }
+    else {
+        log_file << "Passive | ";
+    }
+    if (filter_time != -1) {
+        log_file << filter_time << endl;
+    }
+    else {
+        log_file << "N/A" << endl;
+    }
+    log_file << "---" << endl;
     
     // Iterate through each interval
     for (int i = 0; i < (int)intervals.size(); i++) {
         cout << "\nInterval " << i + 1 << "/" << intervals.size() << endl;
+        log_file << "Interval " << i + 1 << "/" << intervals.size() << " " << intervals[i].getName() << endl;
+        log_file << "Interval start time: " << intervals[i].getStartTimeSeconds() << " seconds" << endl;
+        log_file << "Interval end time: " << intervals[i].getEndTimeSeconds() << " seconds" << endl;
+        log_file << "Interval length: " << intervals[i].getLengthSeconds() << " seconds" << endl << endl;
+        
         cout << "Interval start time: " << intervals[i].getStartTimeSeconds() << " seconds" << endl;
         cout << "Interval end time: " << intervals[i].getEndTimeSeconds() << " seconds" << endl;
         cout << "Interval length: " << intervals[i].getLengthSeconds() << " seconds" << endl << endl;
+        
         int num_frames = 0;
         double curr_start = intervals[i].getStartTimeMs();
         double curr_end = intervals[i].getEndTimeMs();
@@ -412,6 +460,8 @@ static void grab_frames() {
             }
             string directory_ms1000 = to_string(random_frame_ms);
             string image_directory = frame_directory + directory_min + "_" + directory_sec + "_" + directory_ms1000 + jpg_extension;
+            string non_accepted = video_name_directory + "rejected/" + video_filename.substr(6, video_filename.size() - 10) + "-" + suffix + directory_min + "_" + directory_sec + "_" + directory_ms1000 + "-rejected" + jpg_extension;
+            
             
             // Check for valid key input
             while (1) {
@@ -423,6 +473,8 @@ static void grab_frames() {
                     cout << "Saving frame at " << image_directory << endl;
                     cout << "-------------------------------------------------------------------------" << endl << endl;
                     
+                    log_file << "Accept: " << image_directory << endl;
+                    
                     // Save image
                     imwrite(image_directory, image);
                     
@@ -432,6 +484,11 @@ static void grab_frames() {
                 else if (key_pressed == 'r') {
                     cout << "Frame at " << random_frame / 1000 << " seconds REJECTED!" << endl;
                     cout << "-------------------------------------------------------------------------" << endl << endl;
+                    
+                    log_file << "Reject: " << non_accepted << endl;
+                    
+                    // Save image in rejection
+                    imwrite(non_accepted, image);
                     destroyAllWindows();
                     break;
                 }
@@ -439,10 +496,12 @@ static void grab_frames() {
                     cout << "Interval " << to_string(i + 1) << " SKIPPED!" << endl;
                     cout << "-------------------------------------------------------------------------" << endl << endl;
                     num_frames = MAX_FRAMES;
+                    log_file << "Skip" << endl;
                     destroyAllWindows();
                     break;
                 }
             }
         }
+        log_file << "---" << endl;
     }
 }
