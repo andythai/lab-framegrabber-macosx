@@ -22,16 +22,19 @@ const bool DEBUG_VAR = false;
 const string TEST_MP4 = "input/CSD2122sub-111615.mp4";
 const string TEST_CSV = "input/CSD2122sub-111615.csv";
 const unsigned int MAX_FRAMES = 3;
+const string INPUT_DIRECTORY = "input/";
+const string OUTPUT_DIRECTORY = "output/";
 
 // Variables
 vector<Interval> intervals;		// Container for intervals
 VideoCapture video;				// Loads the video
-string video_filename;			// Video's name
+string video_filename;			// Video's name, input
 bool frame_active = true;		// True if frame grabbing for active rat, false if recording for passive rat
 ofstream log_file;
 double filter_time = -1;
 
 // Forward declarations
+static void check_directory();
 static void load_video();
 static void load_csv();
 static void filter();
@@ -46,31 +49,7 @@ int main(int argc, const char * argv[]) {
     
     srand((unsigned int)time(NULL)); // Set seed for randomness
     
-    struct stat st;
-    if (stat("input/",&st) == 0) {
-        if ((st.st_mode) & (S_IFDIR != 0)) {
-            //std::cout << "Contains input directory!" << std::endl;
-        }
-    }
-    else {
-        std::cout << "No input directory detected!" << std::endl <<
-            "Creating input directory..." << std::endl <<
-            "The program will shut off. Please move your input files into the input folder." << std::endl;
-        mkdir("input",0777);
-        cin.ignore();
-        return 1;
-    }
-    
-    if (stat("output/",&st) == 0) {
-        if ((st.st_mode) & (S_IFDIR != 0)) {
-            //std::cout << "Contains output directory!" << std::endl;
-        }
-    }
-    else {
-        std::cout << "No output directory detected!" << std::endl <<
-            "Creating output directory..." << std::endl;
-        mkdir("output",0777);
-    }
+    check_directory();
     
     // Check if input and output directories exist
     /** WINDOWS
@@ -92,12 +71,7 @@ int main(int argc, const char * argv[]) {
     
     // Filter prompt
     filter();
-    if (intervals.size() == 0) {
-        cout << "\nERROR: No intervals to grab frames from!" << endl;
-        cout << "Press ENTER to close program." << endl;
-        cin.ignore();
-        return 1;
-    }
+    
     
     // Prompt for choosing active or passive rat
     string frame_focus;
@@ -136,6 +110,7 @@ int main(int argc, const char * argv[]) {
     
     // Exit behavior
     log_file.close();
+    destroyAllWindows();
     cout << endl << video_filename << " frame grabbing concluded!" << endl;
     cout << "Press ENTER to exit program." << endl;
     cin.ignore();
@@ -143,25 +118,54 @@ int main(int argc, const char * argv[]) {
     return 0;
 }
 
+static void check_directory() {
+    struct stat st;
+    if (stat("input/",&st) == 0) {
+        if ((st.st_mode) & (S_IFDIR != 0)) {
+            //std::cout << "Contains input directory!" << std::endl;
+        }
+    }
+    else {
+        std::cout << "No input directory detected!" << std::endl <<
+        "Creating input directory..." << std::endl <<
+        "The program will shut off. Please move your input files into the input folder." << std::endl;
+        mkdir("input",0777);
+        cin.ignore();
+        exit(1);
+    }
+    
+    if (stat("output/",&st) == 0) {
+        if ((st.st_mode) & (S_IFDIR != 0)) {
+            //std::cout << "Contains output directory!" << std::endl;
+        }
+    }
+    else {
+        std::cout << "No output directory detected!" << std::endl <<
+        "Creating output directory..." << std::endl;
+        mkdir("output",0777);
+    }
+}
+
 static void load_video() {
 
     // Get video file location
     cout << "Input video file: ";
     getline(cin, video_filename);
+    string full_path;
     
     // Default test file if none specified
     if (video_filename == "") {
         //video_filename = TEST_MP4;
     }
     else {
-        video_filename = "input/" + video_filename;
+        full_path = "input/" + video_filename;
     }
     
     // Initialize and load video into VideoCapture class
     video = VideoCapture();
     //video.set(CV_CAP_PROP_FOURCC, CV_FOURCC('H', '2', '6', '4'));
     //video.open(video_filename, CAP_FFMPEG);
-    video.open(video_filename);
+    video.open(full_path);
     
     // Check if stream opens a valid file
     while (!video.isOpened())
@@ -174,11 +178,11 @@ static void load_video() {
             //video_filename = TEST_MP4;
         }
         else {
-            video_filename = "input/" + video_filename;
+            full_path = "input/" + video_filename;
         }
         video.release();
         //video.open(video_filename, CAP_FFMPEG);
-        video.open(video_filename);
+        video.open(full_path);
     }
     cout << "Loading " << video_filename << "..." << endl << endl;
 }
@@ -192,7 +196,7 @@ static void load_csv() {
     // Default test file if none specified
     if (csv_filename == "") {
         //csv_filename = TEST_CSV;
-        csv_filename = video_filename.substr(0, video_filename.size() - 4) + ".csv";
+        csv_filename = video_filename.substr(0, video_filename.find(".")) + ".csv";
     }
     else {
         csv_filename = "input/" + csv_filename;
@@ -208,7 +212,7 @@ static void load_csv() {
         cout << "Please re-enter the csv file name: ";
         getline(cin, csv_filename);
         if (csv_filename == "") {
-            csv_filename = video_filename.substr(0, video_filename.size() - 4) + ".csv";
+            csv_filename = video_filename.substr(0, video_filename.find(".")) + ".csv";
         }
         else {
             csv_filename = "input/" + csv_filename;
@@ -330,6 +334,13 @@ static void filter() {
     
     cout << "Pruned " << num_pruned << " intervals." << endl;
     cout << "Total amount of csv intervals left: " << intervals.size() << endl;
+    
+    if (intervals.size() == 0) {
+        cout << "\nERROR: No intervals to grab frames from!" << endl;
+        cout << "Press ENTER to close program." << endl;
+        cin.ignore();
+        exit(1);
+    }
     return;
     
 }
@@ -339,30 +350,24 @@ static void grab_frames() {
     // Make resized image copy for view window size
     Mat small_image = Mat();
     Size small_image_size = Size(720, 540); // Original ratio: 1440 x 1080
-    string output_directory = "output/";
     
     // Setting location to save frames
-    string video_cut = video_filename.substr(video_filename.find("/") + 1, video_filename.length());	// Cut down on filename
-    video_cut = video_cut.substr(0, video_cut.find("-") + 1);	// Cut down on filename again
-    string video_date = video_filename.substr(video_filename.find("-") + 1, video_filename.length());
-    video_date = video_date.substr(0, video_date.find("."));			// Date
-    string jpg_extension = ".jpg";
+    // CHANGE THINGS HERE
+    string new_name = OUTPUT_DIRECTORY + video_filename.substr(0, video_filename.find("."));
     
     string prefix;
     if (frame_active) {
-        prefix = "-A";
+        prefix = "A";
     }
     else {
-        prefix = "-P";
+        prefix = "P";
     }
-    string video_name = output_directory + video_cut + video_date + "/" + video_cut + video_date;
-    string video_name_directory = output_directory + video_cut + video_date + "/";
-    string frame_directory = video_name + prefix;
+    string frame_directory = new_name + "/" + video_filename.substr(0, video_filename.find(".")) + "$" + prefix;
     
     // Make directory
     std::cout << "BELOW: " << std::endl;
     struct stat st;
-    if (stat(video_name_directory.c_str(),&st) == 0) {
+    if (stat(new_name.c_str(),&st) == 0) {
         if ((st.st_mode) & (S_IFDIR != 0)) {
             std::cout << "NOTE: This video already has an existing directory!" << std::endl <<
             "It may already be done!" << std::endl << "Continue? (y/n) ";
@@ -381,9 +386,9 @@ static void grab_frames() {
         }
     }
     else {
-        std::cout << "Creating directory " << video_name_directory << std::endl;
-        mkdir(video_name_directory.c_str(),0777);
-        mkdir((video_name_directory + "rejected/").c_str(),0777);
+        std::cout << "Creating directory " << new_name << std::endl;
+        mkdir(new_name.c_str(),0777);
+        mkdir((new_name + "/rejected/").c_str(),0777);
     }
     
     // Open logs
@@ -394,8 +399,8 @@ static void grab_frames() {
     else {
         suffix = "P";
     }
-    log_file.open(video_name + suffix + ".log", ios::out | ios::binary | ios::trunc);
-    log_file << video_cut + video_date << "| ";
+    log_file.open(new_name + suffix + ".log", ios::out | ios::binary | ios::trunc);
+    log_file << new_name << "| ";
     if (frame_active) {
         log_file << "Active | ";
     }
@@ -459,8 +464,8 @@ static void grab_frames() {
                 directory_sec = "0" + directory_sec;
             }
             string directory_ms1000 = to_string(random_frame_ms);
-            string image_directory = frame_directory + directory_min + "_" + directory_sec + "_" + directory_ms1000 + jpg_extension;
-            string non_accepted = video_name_directory + "rejected/" + video_filename.substr(6, video_filename.size() - 10) + "-" + suffix + directory_min + "_" + directory_sec + "_" + directory_ms1000 + "-rejected" + jpg_extension;
+            string image_directory = frame_directory + directory_min + "_" + directory_sec + "_" + directory_ms1000 + ".jpg";
+            string non_accepted = new_name + "/rejected/" + video_filename.substr(0, video_filename.find(".")) + "$" + suffix + directory_min + "_" + directory_sec + "_" + directory_ms1000 + "-rejected" + ".jpg";
             
             
             // Check for valid key input
