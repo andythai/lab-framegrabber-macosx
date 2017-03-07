@@ -196,7 +196,7 @@ static void load_csv() {
     // Default test file if none specified
     if (csv_filename == "") {
         //csv_filename = TEST_CSV;
-        csv_filename = video_filename.substr(0, video_filename.find(".")) + ".csv";
+        csv_filename = "input/" + video_filename.substr(0, video_filename.find(".")) + ".csv";
     }
     else {
         csv_filename = "input/" + csv_filename;
@@ -212,7 +212,7 @@ static void load_csv() {
         cout << "Please re-enter the csv file name: ";
         getline(cin, csv_filename);
         if (csv_filename == "") {
-            csv_filename = video_filename.substr(0, video_filename.find(".")) + ".csv";
+            csv_filename = "input/" + video_filename.substr(0, video_filename.find(".")) + ".csv";
         }
         else {
             csv_filename = "input/" + csv_filename;
